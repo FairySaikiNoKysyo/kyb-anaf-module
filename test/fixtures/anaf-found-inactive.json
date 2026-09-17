@@ -1,0 +1,33 @@
+{
+  "cod": 200,
+  "message": "SUCCESS",
+  "found": [
+    {
+      "date_generale": {
+        "cui": 14399840,
+        "data": "2026-09-17",
+        "denumire": "INACTIVE COMPANY SRL",
+        "adresa": "MUN. BUCURESTI, STR. EXEMPLU NR. 1",
+        "nrRegCom": "J40/1234/2015",
+        "telefon": "0211234567",
+        "codPostal": "010101",
+        "cod_CAEN": "6201",
+        "data_inregistrare": "2015-03-12",
+        "statusRO_e_Factura": true
+      },
+      "inregistrare_scop_Tva": {
+        "scpTVA": true,
+        "perioade_TVA": []
+      },
+      "stare_inactiv": {
+        "statusInactivi": true,
+        "dataInactivare": "2024-01-15"
+      },
+      "adresa_sediu_social": {
+        "sdenumire_Strada": "STR. EXEMPLU",
+        "snumar_Strada": "1"
+      }
+    }
+  ],
+  "notFound": []
+}
