@@ -86,6 +86,35 @@ describe('VerificationsService', () => {
     expect(result.verification.companyId).toBe(result.company?.id);
   });
 
+  it('1a. sends ANAF exactly what it expects: [{cui:number, data:YYYY-MM-DD}] and a User-Agent', async () => {
+    let sentBody: unknown;
+    pool()
+      .intercept({
+        path: PATH,
+        method: 'POST',
+        headers: {
+          'user-agent': 'KYB-Module/1.0-test',
+          'content-type': 'application/json',
+        },
+        body: (raw) => {
+          sentBody = JSON.parse(raw);
+          return true; // the shape is asserted below, with a proper diff on failure
+        },
+      })
+      .reply(200, found);
+
+    // Prefix, whitespace and case must all be stripped before the number reaches ANAF.
+    const result = await service.create('ro 14 399 840');
+
+    // If the headers matcher did not match, MockAgent throws and the status would be
+    // SOURCE_UNAVAILABLE - so COMPLETED proves the User-Agent was sent.
+    expect(result.verification.status).toBe(VerificationStatus.COMPLETED);
+    expect(sentBody).toEqual([{ cui: 14399840, data: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }]);
+    expect(typeof (sentBody as Array<{ cui: unknown }>)[0].cui).toBe('number');
+    // The audit row stores the same request that was sent.
+    expect(snapshots.rows[0].request).toEqual({ method: 'POST', url: `${ORIGIN}${PATH}`, body: sentBody });
+  });
+
   it('1b. inserts the case as PENDING and only moves to a terminal status once the lookup resolves', async () => {
     pool().intercept({ path: PATH, method: 'POST' }).reply(200, found).delay(150);
 
