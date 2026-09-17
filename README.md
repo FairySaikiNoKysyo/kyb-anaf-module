@@ -155,7 +155,7 @@ any undeclared request fails the run.
 
 ## Tests
 
-31 cases across three suites, no infrastructure required. The ANAF fixtures in
+39 cases across four suites, no infrastructure required. The ANAF fixtures in
 `test/fixtures/` are real responses captured from the v9 service on 2026-09-17 (one
 phone number blanked), not hand-written approximations.
 
@@ -177,6 +177,7 @@ phone number blanked), not hand-written approximations.
 | Repeat check | company updated, not duplicated; two cases created |
 | Rate limiter | consecutive calls one interval apart; survives a rejected task |
 | CUI normalisation | `RO` prefix, whitespace, length and format rejection |
+| HTTP contract | real requests through the controller with the same `ValidationPipe` as `main.ts`: 201 + body for found / not found / unavailable, 400 for a numeric `cui`, empty `cui`, unknown fields; `GET` returns snapshot metadata only, 404 / 400 on bad ids |
 
 ---
 
@@ -200,7 +201,11 @@ with an explicit bypass for dossier creation; partitioning `data_snapshots` by m
 since it is append-only and will dominate the database; metrics on external calls
 (latency, outcome, retry rate) so ANAF degradation is visible before operators report it;
 and a scheduled re-check with change detection, since a company going inactive after
-onboarding is exactly what the register is for.
+onboarding is exactly what the register is for. And, before any of that, a reaper for
+verifications stuck in `PENDING`: a process that dies mid-check leaves a row nothing
+completes today, and there is no list endpoint to surface it — a job that marks rows
+older than a few minutes as interrupted, and a way for the operator to run the check
+again, is the first operational piece this needs.
 
 ---
 
