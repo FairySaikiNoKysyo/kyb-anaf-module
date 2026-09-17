@@ -8,16 +8,15 @@ import { AnafFoundEntry } from './anaf.schema';
  * read here means adapting to a new ANAF version is a change to one file, not a hunt
  * through the codebase.
  *
- * ANAF v8/v9 group fields into sub-objects (`date_generale`, `stare_inactiv`,
- * `inregistrare_scop_Tva`). Older and third-party mirrors return them flat. `read()`
- * accepts both so a shape change does not take the module down.
+ * The live v9 service groups fields into sub-objects (`date_generale`, `stare_inactiv`,
+ * `inregistrare_scop_Tva`). Those are read FIRST. A top-level key of the same name is a
+ * defensive fallback only — no real response has been seen to use it — and it must never
+ * take precedence: if ANAF ever added a top-level field with a familiar name and a
+ * different meaning, it would otherwise silently override the correct grouped value.
  */
 const GROUPS = ['date_generale', 'stare_inactiv', 'inregistrare_scop_Tva', 'adresa_sediu_social'];
 
 function read<T = unknown>(entry: AnafFoundEntry, field: string): T | undefined {
-  const flat = (entry as Record<string, unknown>)[field];
-  if (flat !== undefined && flat !== null && flat !== '') return flat as T;
-
   for (const group of GROUPS) {
     const sub = (entry as Record<string, unknown>)[group];
     if (sub && typeof sub === 'object') {
@@ -25,6 +24,9 @@ function read<T = unknown>(entry: AnafFoundEntry, field: string): T | undefined 
       if (value !== undefined && value !== null && value !== '') return value as T;
     }
   }
+
+  const flat = (entry as Record<string, unknown>)[field];
+  if (flat !== undefined && flat !== null && flat !== '') return flat as T;
   return undefined;
 }
 
