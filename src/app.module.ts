@@ -10,6 +10,7 @@ import { VerificationCase } from './verifications/verification-case.entity';
 import { VerificationsController } from './verifications/verifications.controller';
 import { VerificationsService } from './verifications/verifications.service';
 import { InitialSchema1726500000000 } from './migrations/1726500000000-InitialSchema';
+import { AddPendingStatus1758100000000 } from './migrations/1758100000000-AddPendingStatus';
 
 const config = loadConfig();
 
@@ -23,7 +24,7 @@ const config = loadConfig();
       password: config.db.password,
       database: config.db.name,
       entities: [Company, VerificationCase, DataSnapshot],
-      migrations: [InitialSchema1726500000000],
+      migrations: [InitialSchema1726500000000, AddPendingStatus1758100000000],
       synchronize: false,
     }),
     TypeOrmModule.forFeature([Company, VerificationCase, DataSnapshot]),

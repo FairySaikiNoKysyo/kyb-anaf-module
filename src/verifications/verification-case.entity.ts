@@ -2,6 +2,8 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } 
 import { Company } from '../companies/company.entity';
 
 export enum VerificationStatus {
+  /** Inserted before the external lookup starts; a case left in this state was never finished. */
+  PENDING = 'PENDING',
   COMPLETED = 'COMPLETED',
   NOT_FOUND = 'NOT_FOUND',
   SOURCE_UNAVAILABLE = 'SOURCE_UNAVAILABLE',

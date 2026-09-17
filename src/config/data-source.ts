@@ -5,6 +5,7 @@ import { Company } from '../companies/company.entity';
 import { DataSnapshot } from '../verifications/data-snapshot.entity';
 import { VerificationCase } from '../verifications/verification-case.entity';
 import { InitialSchema1726500000000 } from '../migrations/1726500000000-InitialSchema';
+import { AddPendingStatus1758100000000 } from '../migrations/1758100000000-AddPendingStatus';
 
 const config = loadConfig();
 
@@ -22,5 +23,5 @@ export const AppDataSource = new DataSource({
   synchronize: false,
   logging: false,
   entities: [Company, VerificationCase, DataSnapshot],
-  migrations: [InitialSchema1726500000000],
+  migrations: [InitialSchema1726500000000, AddPendingStatus1758100000000],
 });

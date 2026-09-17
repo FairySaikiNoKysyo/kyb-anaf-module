@@ -86,6 +86,21 @@ describe('VerificationsService', () => {
     expect(result.verification.companyId).toBe(result.company?.id);
   });
 
+  it('1b. inserts the case as PENDING and only moves to a terminal status once the lookup resolves', async () => {
+    pool().intercept({ path: PATH, method: 'POST' }).reply(200, found).delay(150);
+
+    const pending = service.create('14399840');
+    await new Promise((r) => setTimeout(r, 50)); // lookup is in flight
+
+    expect(cases.rows).toHaveLength(1);
+    expect(cases.rows[0].status).toBe(VerificationStatus.PENDING);
+    expect(cases.rows[0].finishedAt).toBeNull();
+
+    const result = await pending;
+    expect(result.verification.status).toBe(VerificationStatus.COMPLETED);
+    expect(result.verification.finishedAt).toBeInstanceOf(Date);
+  });
+
   it('2. treats "not found" as a business result, not an error', async () => {
     // Verified against the live service: an unknown CUI is HTTP 404 with the normal
     // envelope, not 200. Serving it with 200 here would let a client that treats every

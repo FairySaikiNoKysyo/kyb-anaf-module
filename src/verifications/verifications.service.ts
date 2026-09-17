@@ -40,10 +40,12 @@ export class VerificationsService {
       throw error;
     }
 
+    // PENDING, never a terminal status: if the process dies mid-lookup the permanent
+    // record must say "unfinished", not claim an outage that did not happen.
     const verification = await this.cases.save(
       this.cases.create({
         requestedCui: normalized.value,
-        status: VerificationStatus.SOURCE_UNAVAILABLE,
+        status: VerificationStatus.PENDING,
         startedAt: new Date(),
         finishedAt: null,
         companyId: null,
