@@ -186,6 +186,31 @@ describe('VerificationsService', () => {
     expect(snapshots.rows[0].response).toEqual(malformed);
   });
 
+  it('5b. does not call a company "not found" unless ANAF lists that CUI in notFound', async () => {
+    // A well-formed envelope that says nothing about the requested CUI.
+    pool().intercept({ path: PATH, method: 'POST' }).reply(200, { found: [], notFound: [] });
+
+    const result = await service.create('14399840');
+
+    expect(result.verification.status).toBe(VerificationStatus.INVALID_RESPONSE);
+    expect(result.message).not.toContain(NOT_FOUND_MESSAGE);
+    expect(result.company).toBeNull();
+    expect(snapshots.rows).toHaveLength(1); // one attempt, raw body kept
+    expect(snapshots.rows[0].success).toBe(true);
+  });
+
+  it('5c. refuses a found record that is about a different CUI', async () => {
+    // Real record for 18000054 served for a request about 14399840.
+    pool().intercept({ path: PATH, method: 'POST' }).reply(200, foundInactive);
+
+    const result = await service.create('14399840');
+
+    expect(result.verification.status).toBe(VerificationStatus.INVALID_RESPONSE);
+    expect(result.message).toMatch(/18000054/);
+    expect(result.company).toBeNull();
+    expect(companies.rows).toHaveLength(0);
+  });
+
   it('6. promotes the ANAF inactive flag to its own column', async () => {
     pool().intercept({ path: PATH, method: 'POST' }).reply(200, foundInactive);
 
@@ -206,7 +231,8 @@ describe('VerificationsService', () => {
   });
 
   it('8. records a checksum mismatch as a warning and still performs the lookup', async () => {
-    pool().intercept({ path: PATH, method: 'POST' }).reply(404, notFound);
+    // Same shape as the captured not-found fixture, for the CUI this test asks about.
+    pool().intercept({ path: PATH, method: 'POST' }).reply(404, { found: [], notFound: [14399841] });
 
     const result = await service.create('14399841'); // control digit deliberately wrong
 

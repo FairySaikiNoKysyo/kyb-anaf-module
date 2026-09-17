@@ -21,6 +21,26 @@ export interface AnafClientOptions {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const RETRYABLE_STATUS = (s: number) => s >= 500 || s === 429;
 
+/** Digits of a CUI as ANAF writes it: a number, a numeric string, or {cui} in older shapes. */
+function cuiOf(value: unknown): number | undefined {
+  const raw =
+    value !== null && typeof value === 'object' ? (value as Record<string, unknown>).cui : value;
+  if (typeof raw !== 'number' && typeof raw !== 'string') return undefined;
+  const n = Number(String(raw).replace(/\D/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * The CUI a found record is about. Duplicates one field read from anaf.mapper.ts on
+ * purpose: the client must confirm the record is for the CUI it asked for BEFORE the
+ * mapper (which falls back to the requested CUI when the field is absent) ever sees it.
+ */
+function recordCui(record: Record<string, unknown>): number | undefined {
+  const general = record.date_generale;
+  const grouped = general !== null && typeof general === 'object' ? cuiOf(general) : undefined;
+  return grouped ?? cuiOf(record.cui);
+}
+
 export class AnafClient {
   private readonly logger = new Logger(AnafClient.name);
 
@@ -99,9 +119,28 @@ export class AnafClient {
         };
       }
 
+      // The answer must actually be ABOUT the CUI we asked for. "found is empty" is not
+      // evidence that a company does not exist; only its presence in notFound is. Telling
+      // an operator "not in the tax register" on the basis of a response that said
+      // nothing about it would be a false compliance statement.
       const found = parsed.data.found ?? [];
-      if (found.length > 0) return { kind: 'found', record: found[0] };
-      return { kind: 'notFound' };
+      if (found.length > 0) {
+        const answered = recordCui(found[0]);
+        if (answered !== cui) {
+          return {
+            kind: 'invalidResponse',
+            reason: `ANAF returned a record for CUI ${answered ?? '<missing>'} when ${cui} was requested`,
+          };
+        }
+        return { kind: 'found', record: found[0] };
+      }
+      if ((parsed.data.notFound ?? []).some((entry) => cuiOf(entry) === cui)) {
+        return { kind: 'notFound' };
+      }
+      return {
+        kind: 'invalidResponse',
+        reason: `ANAF response lists CUI ${cui} neither as found nor as notFound`,
+      };
     }
 
     return { kind: 'unavailable', reason: lastReason };
