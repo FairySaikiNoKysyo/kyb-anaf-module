@@ -271,8 +271,15 @@ describe('VerificationsService', () => {
 
     const result = await service.create('14399841'); // control digit deliberately wrong
 
+    // The lookup really happened and its outcome is the one ANAF gave, not an outage.
     expect(snapshots.rows).toHaveLength(1);
+    expect(snapshots.rows[0].success).toBe(true);
+    expect(snapshots.rows[0].httpStatus).toBe(404);
+    expect(result.verification.status).toBe(VerificationStatus.NOT_FOUND);
+    // The warning is appended to the outcome message, it does not replace it.
+    expect(result.message).toContain(NOT_FOUND_MESSAGE);
     expect(result.verification.note).toMatch(/control digit/i);
+    expect(result.verification.note).toContain(NOT_FOUND_MESSAGE);
   });
 
   it('9. updates an existing company instead of inserting a duplicate', async () => {
