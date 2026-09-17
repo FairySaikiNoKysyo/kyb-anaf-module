@@ -25,6 +25,11 @@ const envSchema = z.object({
   ANAF_MIN_INTERVAL_MS: z.coerce.number().int().nonnegative(),
   ANAF_MAX_RETRIES: z.coerce.number().int().min(1).max(10),
 
+  /** A verification still PENDING after this long is marked INTERRUPTED. */
+  PENDING_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
+  /** How often the reaper looks. */
+  REAPER_INTERVAL_MS: z.coerce.number().int().positive().default(60 * 1000),
+
   PORT: z.coerce.number().int().positive().default(3000),
 });
 
@@ -38,6 +43,7 @@ export type AppConfig = {
     minIntervalMs: number;
     maxRetries: number;
   };
+  reaper: { pendingTimeoutMs: number; intervalMs: number };
   port: number;
 };
 
@@ -60,6 +66,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       minIntervalMs: e.ANAF_MIN_INTERVAL_MS,
       maxRetries: e.ANAF_MAX_RETRIES,
     },
+    reaper: { pendingTimeoutMs: e.PENDING_TIMEOUT_MS, intervalMs: e.REAPER_INTERVAL_MS },
     port: e.PORT,
   };
 }

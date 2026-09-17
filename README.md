@@ -70,8 +70,12 @@ maps to `VerificationStatus.NOT_FOUND`.
 
 **A failed lookup still creates a verification.** The case is inserted as `PENDING`
 before the lookup starts, so a crash mid-lookup leaves a record that says "unfinished"
-rather than one claiming an outage. When ANAF is unreachable the case ends as
-`SOURCE_UNAVAILABLE` and the operator can run a new check later. The specification
+rather than one claiming an outage. Such rows do not stay that way: `StaleVerificationReaper`
+sweeps at startup and every `REAPER_INTERVAL_MS`, and marks any case still `PENDING`
+after `PENDING_TIMEOUT_MS` (default 5 minutes) as `INTERRUPTED` with a note. It is a
+plain `setInterval`, not a scheduler library — one query a minute needs no infrastructure.
+When ANAF is unreachable the case ends as `SOURCE_UNAVAILABLE` and the operator can run
+a new check later. The specification
 requires this, and the reasoning holds independently: the obligation is to show that the
 check was attempted.
 
@@ -155,7 +159,7 @@ any undeclared request fails the run.
 
 ## Tests
 
-39 cases across four suites, no infrastructure required. The ANAF fixtures in
+44 cases across five suites, no infrastructure required. The ANAF fixtures in
 `test/fixtures/` are real responses captured from the v9 service on 2026-09-17 (one
 phone number blanked), not hand-written approximations.
 
@@ -177,6 +181,7 @@ phone number blanked), not hand-written approximations.
 | Repeat check | company updated, not duplicated; two cases created |
 | Rate limiter | consecutive calls one interval apart; survives a rejected task |
 | CUI normalisation | `RO` prefix, whitespace, length and format rejection |
+| Stale PENDING reaper | only `PENDING` rows older than the timeout become `INTERRUPTED`; fresh and terminal rows untouched; idempotent; survives a failing query; timer cleared on shutdown |
 | HTTP contract | real requests through the controller with the same `ValidationPipe` as `main.ts`: 201 + body for found / not found / unavailable, 400 for a numeric `cui`, empty `cui`, unknown fields; `GET` returns snapshot metadata only, 404 / 400 on bad ids |
 
 ---
@@ -201,11 +206,9 @@ with an explicit bypass for dossier creation; partitioning `data_snapshots` by m
 since it is append-only and will dominate the database; metrics on external calls
 (latency, outcome, retry rate) so ANAF degradation is visible before operators report it;
 and a scheduled re-check with change detection, since a company going inactive after
-onboarding is exactly what the register is for. And, before any of that, a reaper for
-verifications stuck in `PENDING`: a process that dies mid-check leaves a row nothing
-completes today, and there is no list endpoint to surface it — a job that marks rows
-older than a few minutes as interrupted, and a way for the operator to run the check
-again, is the first operational piece this needs.
+onboarding is exactly what the register is for. Also a list endpoint: today a
+verification is reachable only by id, so an `INTERRUPTED` case is visible in the
+database but not through the API.
 
 ---
 

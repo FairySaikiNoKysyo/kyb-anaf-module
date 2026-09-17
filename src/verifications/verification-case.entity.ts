@@ -4,6 +4,8 @@ import { Company } from '../companies/company.entity';
 export enum VerificationStatus {
   /** Inserted before the external lookup starts; a case left in this state was never finished. */
   PENDING = 'PENDING',
+  /** Was PENDING past the configured timeout: the process died mid-check. Set by the reaper. */
+  INTERRUPTED = 'INTERRUPTED',
   COMPLETED = 'COMPLETED',
   NOT_FOUND = 'NOT_FOUND',
   SOURCE_UNAVAILABLE = 'SOURCE_UNAVAILABLE',

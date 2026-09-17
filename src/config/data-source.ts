@@ -7,6 +7,7 @@ import { VerificationCase } from '../verifications/verification-case.entity';
 import { InitialSchema1726500000000 } from '../migrations/1726500000000-InitialSchema';
 import { AddPendingStatus1758100000000 } from '../migrations/1758100000000-AddPendingStatus';
 import { AddSnapshotQueueWaitMs1758100001000 } from '../migrations/1758100001000-AddSnapshotQueueWaitMs';
+import { AddInterruptedStatus1758100002000 } from '../migrations/1758100002000-AddInterruptedStatus';
 
 const config = loadConfig();
 
@@ -24,5 +25,10 @@ export const AppDataSource = new DataSource({
   synchronize: false,
   logging: false,
   entities: [Company, VerificationCase, DataSnapshot],
-  migrations: [InitialSchema1726500000000, AddPendingStatus1758100000000, AddSnapshotQueueWaitMs1758100001000],
+  migrations: [
+    InitialSchema1726500000000,
+    AddPendingStatus1758100000000,
+    AddSnapshotQueueWaitMs1758100001000,
+    AddInterruptedStatus1758100002000,
+  ],
 });
