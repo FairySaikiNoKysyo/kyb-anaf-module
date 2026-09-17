@@ -11,6 +11,8 @@ on its own.
 
 ## Quick start
 
+Requires Node 20+ (developed and verified on Node 24) and Docker for PostgreSQL.
+
 ```bash
 cp .env.example .env
 docker compose up -d          # PostgreSQL 16
@@ -55,6 +57,47 @@ Returns the case, the company if one was found, and snapshot **metadata**. Raw e
 payloads stay in the database: they are evidence, not something to hand out over the API
 by default.
 
+```json
+{
+  "verification": { "id": "…", "requestedCui": 14399840, "companyId": "…", "status": "COMPLETED", "startedAt": "…", "finishedAt": "…", "note": null },
+  "company": { "cui": 14399840, "name": "…", "isInactive": false, "…": "…" },
+  "snapshots": [
+    { "id": "…", "source": "ANAF", "requestedAt": "…", "success": true, "httpStatus": 200, "durationMs": 141, "queueWaitMs": 0, "attempt": 1 }
+  ]
+}
+```
+
+### Verification statuses
+
+| Status | Meaning | HTTP on `POST` |
+|---|---|---|
+| `PENDING` | Inserted before the ANAF call starts; a case is only in this state while the lookup is in flight | — |
+| `COMPLETED` | ANAF returned the company; the `Company` row is created or updated | 201 |
+| `NOT_FOUND` | ANAF listed the CUI in `notFound`; no company row; operator message in `message` | 201 |
+| `SOURCE_UNAVAILABLE` | Every attempt failed (timeout, network error, 5xx, 429, or a 404 without the ANAF envelope) | 201 |
+| `INVALID_RESPONSE` | ANAF answered with a body that is not about this CUI or has an unexpected shape; not retried, a human must look | 201 |
+| `INTERRUPTED` | Was still `PENDING` after `PENDING_TIMEOUT_MS`: the process died mid-check. Set by the reaper, never by the request path | — |
+
+A malformed CUI is the only 400; nothing is persisted for it.
+
+### Configuration
+
+All values come from the environment (`.env` locally, see `.env.example`) and are
+validated with zod at startup — the process refuses to boot on a bad value.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | `localhost`, `5432`, `kyb`, `kyb`, `kyb` | PostgreSQL (matches `docker-compose.yml`) |
+| `ANAF_BASE_URL` | `https://webservicesp.anaf.ro/api/PlatitorTvaRest` | Service root |
+| `ANAF_API_VERSION` | `v9` | Path segment; verified current on 2026-09-17 (`v10` does not exist) |
+| `ANAF_TIMEOUT_MS` | `10000` | Per-attempt HTTP timeout |
+| `ANAF_USER_AGENT` | `KYB-Module/1.0` | ANAF rejects empty or suspicious agents |
+| `ANAF_MIN_INTERVAL_MS` | `1000` | Global spacing between outbound calls |
+| `ANAF_MAX_RETRIES` | `3` | Attempts per lookup (1–10) |
+| `PENDING_TIMEOUT_MS` | `300000` | A case still `PENDING` after this is marked `INTERRUPTED` |
+| `REAPER_INTERVAL_MS` | `60000` | How often the reaper sweeps |
+| `PORT` | `3000` | HTTP port |
+
 ---
 
 ## Design decisions
@@ -75,9 +118,8 @@ sweeps at startup and every `REAPER_INTERVAL_MS`, and marks any case still `PEND
 after `PENDING_TIMEOUT_MS` (default 5 minutes) as `INTERRUPTED` with a note. It is a
 plain `setInterval`, not a scheduler library — one query a minute needs no infrastructure.
 When ANAF is unreachable the case ends as `SOURCE_UNAVAILABLE` and the operator can run
-a new check later. The specification
-requires this, and the reasoning holds independently: the obligation is to show that the
-check was attempted.
+a new check later. The specification requires this, and the reasoning holds
+independently: the obligation is to show that the check was attempted.
 
 **All of those return HTTP 201, not 404 or 502.** The resource being created is the
 *verification*, and it exists in every one of these cases. A 404 would claim it does not,
@@ -88,7 +130,9 @@ checked and no record is worth keeping.
 retry — is stored with the raw response body, unmodified, in `jsonb`. `success` refers to
 the HTTP call, so a `notFound` answer is `success: true`. Nothing in the codebase exposes
 update or delete for `DataSnapshot`. A dossier that can be edited after the fact proves
-nothing to a supervisory authority, which is the entire reason this entity exists.
+nothing to a supervisory authority, which is the entire reason this entity exists. Be
+clear about what that guarantee is today: a convention in the code, not a constraint in
+the database — see "Known limitations".
 
 **The rate limit is one shared limiter per process, not per user or per request.** ANAF
 allows roughly one request per second and blocks clients that exceed it. That budget
@@ -197,18 +241,48 @@ show poor judgement about scale, not capability.
 
 ---
 
+## Known limitations
+
+Things I know about and chose not to fix within the scope of this task, worst first.
+
+- **Snapshot immutability is a code convention, not a database guarantee.** The
+  repository has no update or delete path, but nothing stops a `UPDATE` from psql. For a
+  dossier shown to a regulator this belongs in Postgres: a separate application role
+  without `UPDATE`/`DELETE` on `data_snapshots`, or a trigger that rejects both.
+- **Two first-time checks of the same CUI at the same moment can collide.** `upsertCompany`
+  is find-then-insert; the second insert hits the unique index and the request fails with
+  500, leaving that case `PENDING` (the reaper will close it). The 1 req/s limiter makes the
+  window small — the first ANAF call has to take longer than a second — but not zero. The
+  fix is `INSERT … ON CONFLICT (cui) DO UPDATE`.
+- **No back-pressure.** Concurrent requests queue on the limiter without bound; the
+  N-th caller waits N seconds with its connection open, and `ANAF_TIMEOUT_MS` covers the
+  fetch, not the queue. Fine for one operator clicking; wrong for a batch import. The right
+  shape is a bounded queue answering 429 with `Retry-After`, or 202 + polling.
+- **Dates.** `Company.registeredAt` is a JS `Date` in memory and a `date` column in
+  Postgres, so it serialises as `2002-01-23T00:00:00.000Z` on `POST` and `2002-01-23` on
+  `GET`; and TypeORM writes `date` columns from local time, so on a server west of UTC the
+  stored day is off by one. The `data` field sent to ANAF is the UTC date, which between
+  00:00 and 03:00 Bucharest time is yesterday. Dates should be `YYYY-MM-DD` strings end to
+  end, computed in `Europe/Bucharest`.
+- **The rate limiter is per process** (see Design decisions). A second instance, or a
+  `--watch` restart, resets the clock.
+- **No list endpoint.** A verification is reachable only by id, so an `INTERRUPTED` case is
+  visible in the database but not through the API.
+- **The mapper's top-level fallback is untested against any real source.** Groups are read
+  first, so it cannot override real data; it is defensive code that may deserve deleting.
+
 ## What I would add next
 
-In rough order: multi-tenancy with isolation enforced in SQL rather than only in the
-controller (§9); a distributed rate limiter backed by Redis, because the ANAF budget is
-per deployment and the current one is per process; the 24-hour preview cache from §11
-with an explicit bypass for dossier creation; partitioning `data_snapshots` by month,
-since it is append-only and will dominate the database; metrics on external calls
-(latency, outcome, retry rate) so ANAF degradation is visible before operators report it;
-and a scheduled re-check with change detection, since a company going inactive after
-onboarding is exactly what the register is for. Also a list endpoint: today a
-verification is reachable only by id, so an `INTERRUPTED` case is visible in the
-database but not through the API.
+In rough order: the database-level immutability and `ON CONFLICT` upsert above;
+multi-tenancy with isolation enforced in SQL rather than only in the controller (§9); a
+list endpoint with filters (the verification journal from §8); a distributed rate
+limiter backed by Redis, because the ANAF budget is per deployment and the current one is
+per process; the 24-hour preview cache from §11 with an explicit bypass for dossier
+creation; partitioning `data_snapshots` by month, since it is append-only and will
+dominate the database; metrics on external calls (latency, outcome, retry rate, queue
+wait) so ANAF degradation is visible before operators report it; and a scheduled re-check
+with change detection, since a company going inactive after onboarding is exactly what
+the register is for.
 
 ---
 
