@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { AnafClient } from './anaf/anaf.client';
 import { AnafRateLimiter } from './common/rate-limit/anaf-rate-limiter';
 import { Company } from './companies/company.entity';
-import { CONFIG, loadConfig } from './config/configuration';
+import { loadConfig } from './config/configuration';
 import { DataSnapshot } from './verifications/data-snapshot.entity';
 import { VerificationCase } from './verifications/verification-case.entity';
 import { VerificationsController } from './verifications/verifications.controller';
@@ -32,7 +32,6 @@ const config = loadConfig();
   ],
   controllers: [VerificationsController],
   providers: [
-    { provide: CONFIG, useValue: config },
     {
       // One shared limiter for the whole process: the ANAF budget belongs to the
       // service, not to a request or a user.

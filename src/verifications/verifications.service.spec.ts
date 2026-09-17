@@ -40,7 +40,7 @@ describe('VerificationsService', () => {
         timeoutMs: 300,
         userAgent: 'KYB-Module/1.0-test',
         maxRetries,
-        backoffMs: () => 1, // the backoff policy is asserted separately; no need to wait here
+        backoffMs: () => 1, // no need to wait real seconds between retries here
       },
       new AnafRateLimiter(0),
     );

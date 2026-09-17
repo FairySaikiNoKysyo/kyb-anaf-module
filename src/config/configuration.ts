@@ -63,5 +63,3 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: e.PORT,
   };
 }
-
-export const CONFIG = 'APP_CONFIG';
