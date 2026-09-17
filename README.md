@@ -1,17 +1,22 @@
 # KYB module — Romanian company lookup via ANAF
 
 Looks up a Romanian company by its tax number (CUI) through the public ANAF web service,
-stores the result, and records every call as immutable audit evidence.
+stores the result, and records every call as append-only audit evidence.
 
-This is Stage 1, item 1 of the KYB specification. It is written as production code rather
-than as a demo, because the specification says this stage is already usable and sellable
-on its own.
+The assignment was a short brief: NestJS + TypeORM + PostgreSQL, look up a company by
+CUI via ANAF, store it, handle "not found" and "service unavailable", at least one test,
+backend only. Alongside it the client shared a broader KYB document — his research into
+the domain, not the assignment. Where a choice below follows that document it is cited
+as "KYB document §n"; this module is what its §12 calls Stage 1, item 1. It is written
+with production concerns in mind (audit trail, rate limit, failure handling), and the
+"Known limitations" section says where it still falls short of production.
 
 ---
 
 ## Quick start
 
-Requires Node 20+ (developed and verified on Node 24) and Docker for PostgreSQL.
+Developed and verified on Node 24; Docker is used for PostgreSQL. Nothing Node-24-specific
+is used and Node 20 LTS should work, but it has not been run.
 
 ```bash
 cp .env.example .env
@@ -118,7 +123,7 @@ sweeps at startup and every `REAPER_INTERVAL_MS`, and marks any case still `PEND
 after `PENDING_TIMEOUT_MS` (default 5 minutes) as `INTERRUPTED` with a note. It is a
 plain `setInterval`, not a scheduler library — one query a minute needs no infrastructure.
 When ANAF is unreachable the case ends as `SOURCE_UNAVAILABLE` and the operator can run
-a new check later. The specification requires this, and the reasoning holds
+a new check later. The KYB document (§10) requires this, and the reasoning holds
 independently: the obligation is to show that the check was attempted.
 
 **All of those return HTTP 201, not 404 or 502.** The resource being created is the
@@ -134,8 +139,9 @@ nothing to a supervisory authority, which is the entire reason this entity exist
 clear about what that guarantee is today: a convention in the code, not a constraint in
 the database — see "Known limitations".
 
-**The rate limit is one shared limiter per process, not per user or per request.** ANAF
-allows roughly one request per second and blocks clients that exceed it. That budget
+**The rate limit is one shared limiter per process, not per user or per request.** The KYB
+document says ANAF allows roughly one request per second and blocks clients that exceed
+it; this module never exceeded it, so the blocking behaviour was not observed. That budget
 belongs to the deployment, so `AnafRateLimiter` is a single instance shared by every
 request in the process and serialises every outbound call, retries included. It is
 in-process: running more than one instance of the service needs a distributed limiter
@@ -153,7 +159,7 @@ into a compliance dossier is the failure that matters here, but so is refusing t
 because ANAF added a field.
 
 **Every ANAF record field name lives in one file.** `src/anaf/anaf.mapper.ts` is the
-only place that knows what `denumire` or `statusInactivi` means. The specification
+only place that knows what `denumire` or `statusInactivi` means. The KYB document (§4.1)
 explicitly warns that its field list is not authoritative and must be verified against
 the live service, so adapting to a new ANAF version is a change to one file. (The
 envelope keys — `found`, `notFound` — and the record's own `cui` are also read by
@@ -167,7 +173,7 @@ reject valid companies and block real business; being wrong the other way costs 
 call to a free service. The result is recorded on the verification and the lookup proceeds
 regardless.
 
-**Cache is deliberately not implemented.** The specification allows caching ANAF data for
+**Cache is deliberately not implemented.** The KYB document (§11) allows caching ANAF data for
 up to 24 hours but requires a fresh call whenever a new verification is created — and
 creating a verification is this module's only path. A cache here would be dead code. It
 becomes relevant when preview and autocomplete arrive.
@@ -180,22 +186,25 @@ any undeclared request fails the run.
 
 ---
 
-## Mapping to the specification
+## Mapping to the client's KYB document
 
-| Spec | Requirement | Where |
+The document is the client's research into the domain, not the assignment; this table
+shows which of its points Stage 1 covers and where.
+
+| § | Requirement | Where |
 |---|---|---|
 | §4.1 | POST, array body, CUI as a number without the `RO` prefix | `src/anaf/anaf.client.ts`, `src/cui/cui.util.ts` |
-| §4.1 | Meaningful `User-Agent` (ANAF rejects empty or suspicious ones) | `src/anaf/anaf.client.ts`, `ANAF_USER_AGENT` |
+| §4.1 | Meaningful `User-Agent` (the document says ANAF rejects empty or suspicious ones; not tested here) | `src/anaf/anaf.client.ts`, `ANAF_USER_AGENT` |
 | §4.1 | CUI not found → message to the operator, do not crash | `VerificationStatus.NOT_FOUND`, `NOT_FOUND_MESSAGE` |
 | §4.1 | Service version and field names must be verifiable / replaceable | `ANAF_API_VERSION`, `src/anaf/anaf.mapper.ts` |
 | §4.1 | `inactiv` flag is a critical risk marker | `Company.isInactive` (own column, not buried in the snapshot) |
 | §5.1 | Company directory | `src/companies/company.entity.ts` |
 | §5.2 | VerificationCase as the key entity | `src/verifications/verification-case.entity.ts` |
 | §5.3 | Snapshot per external request, raw response, never modified | `src/verifications/data-snapshot.entity.ts` |
-| §10 | Source unavailable → case is created, step marked failed, retryable | `VerificationStatus.SOURCE_UNAVAILABLE` |
+| §10 | Source unavailable → case is created and marked failed; the operator runs a new check | `VerificationStatus.SOURCE_UNAVAILABLE` |
 | §10 | Failed requests stored too, as proof the attempt was made | `AnafClient.lookup` → `persistAttempt` |
 | §10 | Up to 3 attempts with increasing backoff | `src/anaf/anaf.client.ts` |
-| §10 | 1 request/second **globally**, not per user | `src/common/rate-limit/anaf-rate-limiter.ts` |
+| §10 | 1 request/second shared by all users — per process here, see Known limitations | `src/common/rate-limit/anaf-rate-limiter.ts` |
 | §11 | Cache not used when creating a verification | not implemented — see Design decisions |
 | §12 | Stage 1: ANAF + Company / VerificationCase / DataSnapshot | this module |
 
@@ -236,8 +245,8 @@ Authentication and users; multi-tenancy (`tenantId` / `operatorId` from §5.2 an
 row-level isolation from §9); PDF dossier generation; Termene.ro, OpenSanctions and RBR;
 the ownership tree and the 25% beneficial-owner calculation; risk scoring; any frontend.
 
-These belong to Stages 1–3 of the specification. Including them in a few-hour task would
-show poor judgement about scale, not capability.
+These belong to Stages 1–3 of the KYB document and are well beyond the brief. Including
+them in a few-hour task would show poor judgement about scale, not capability.
 
 ---
 
