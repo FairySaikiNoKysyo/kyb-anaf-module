@@ -16,7 +16,7 @@ cp .env.example .env
 docker compose up -d          # PostgreSQL 16
 npm ci
 npm run migration:run
-npm run start:dev             # http://localhost:3000
+npm run start:dev             # http://localhost:3000  (or: npm run build && npm run start:prod)
 ```
 
 Run the tests — no database or network required:
@@ -68,8 +68,10 @@ misconfigured URL cannot report every company as not found. "This company is not
 tax register" is an answer a KYB operator needs recorded, not an exception to swallow. It
 maps to `VerificationStatus.NOT_FOUND`.
 
-**A failed lookup still creates a verification.** When ANAF is unreachable the case is
-saved with `SOURCE_UNAVAILABLE` and the operator can retry later. The specification
+**A failed lookup still creates a verification.** The case is inserted as `PENDING`
+before the lookup starts, so a crash mid-lookup leaves a record that says "unfinished"
+rather than one claiming an outage. When ANAF is unreachable the case ends as
+`SOURCE_UNAVAILABLE` and the operator can run a new check later. The specification
 requires this, and the reasoning holds independently: the obligation is to show that the
 check was attempted.
 
@@ -84,13 +86,16 @@ the HTTP call, so a `notFound` answer is `success: true`. Nothing in the codebas
 update or delete for `DataSnapshot`. A dossier that can be edited after the fact proves
 nothing to a supervisory authority, which is the entire reason this entity exists.
 
-**The rate limit is global to the service.** ANAF allows roughly one request per second
-and blocks clients that exceed it. That budget belongs to the deployment, not to a user
-or a request, so `AnafRateLimiter` is a single shared instance that serialises every
-outbound call. It applies to retries too.
+**The rate limit is one shared limiter per process, not per user or per request.** ANAF
+allows roughly one request per second and blocks clients that exceed it. That budget
+belongs to the deployment, so `AnafRateLimiter` is a single instance shared by every
+request in the process and serialises every outbound call, retries included. It is
+in-process: running more than one instance of the service needs a distributed limiter
+(see "What I would add next"). Each snapshot records how long the attempt waited for the
+limiter (`queueWaitMs`) separately from the HTTP call itself (`durationMs`).
 
-**Retries: 3 attempts, 1s/2s/4s, on timeouts, network errors, 5xx and 429 only.** Other
-4xx are not retried — they will not become successes. Neither is a schema mismatch: a
+**Retries: up to 3 attempts — two waits of 1s and 2s — on timeouts, network errors, 5xx
+and 429 only.** Other 4xx are not retried — they will not become successes. Neither is a schema mismatch: a
 valid HTTP response of the wrong shape means the contract changed, and repeating the call
 will not fix that.
 
@@ -99,12 +104,15 @@ the record itself is kept raw. Silently accepting a changed shape and writing ga
 into a compliance dossier is the failure that matters here, but so is refusing to work
 because ANAF added a field.
 
-**Every ANAF field name lives in one file.** `src/anaf/anaf.mapper.ts` is the only place
-that knows what `denumire` or `statusInactivi` means. The specification explicitly warns
-that its field list is not authoritative and must be verified against the live service,
-so adapting to a new ANAF version is a change to one file. The mapper reads both the
-grouped (`date_generale.denumire`) and flat (`denumire`) layouts, because different ANAF
-versions and mirrors use both.
+**Every ANAF record field name lives in one file.** `src/anaf/anaf.mapper.ts` is the
+only place that knows what `denumire` or `statusInactivi` means. The specification
+explicitly warns that its field list is not authoritative and must be verified against
+the live service, so adapting to a new ANAF version is a change to one file. (The
+envelope keys — `found`, `notFound` — and the record's own `cui` are also read by
+`anaf.schema.ts` and `anaf.client.ts`, which verify that the answer is about the CUI
+that was asked for before the mapper sees it.) The live v9 service groups fields into
+sub-objects (`date_generale.denumire`); the mapper also accepts the same names at the
+top level as a defensive fallback, which is untested against any real source.
 
 **The CUI control digit is a warning, never a blocker.** A bug in our own checksum would
 reject valid companies and block real business; being wrong the other way costs one extra
@@ -147,21 +155,25 @@ any undeclared request fails the run.
 
 ## Tests
 
-26 cases across three suites, no infrastructure required. The ANAF fixtures in
+31 cases across three suites, no infrastructure required. The ANAF fixtures in
 `test/fixtures/` are real responses captured from the v9 service on 2026-09-17 (one
 phone number blanked), not hand-written approximations.
 
 | Area | Covered |
 |---|---|
 | Company found | company stored, case `COMPLETED`, snapshot `success: true` |
-| Not found | HTTP 404 + envelope → `NOT_FOUND`, no company row, operator message, verification still created |
+| Outbound request | body is `[{cui:number, data:YYYY-MM-DD}]`, no `RO` prefix, `User-Agent` sent |
+| Pending state | case is `PENDING` with no `finishedAt` while the lookup is in flight |
+| Not found | HTTP 404 + envelope listing the requested CUI → `NOT_FOUND`, no company row, operator message, verification still created |
 | 404 without envelope | `SOURCE_UNAVAILABLE`, not mistaken for "not found", not retried |
 | HTTP 500 | 3 attempts, **3** failed snapshots, `SOURCE_UNAVAILABLE`, raw body kept |
-| Timeout | `SOURCE_UNAVAILABLE`, every attempt recorded |
+| Timeout | `SOURCE_UNAVAILABLE`, 3 attempts recorded, reported as a timeout |
 | Wrong response shape | `INVALID_RESPONSE`, **not** retried, raw body kept |
+| Answer about another CUI | envelope that lists the CUI neither as found nor as notFound, or a record for a different CUI → `INVALID_RESPONSE`, never `NOT_FOUND` |
 | Inactive company | `isInactive` promoted to its own column |
 | Malformed CUI | 400 before any request is spent; nothing persisted |
-| Bad control digit | recorded as a warning, lookup still performed |
+| Bad control digit | recorded as a warning, lookup still performed and its outcome kept |
+| Timing | `durationMs` is the HTTP call only; limiter wait goes to `queueWaitMs` |
 | Repeat check | company updated, not duplicated; two cases created |
 | Rate limiter | consecutive calls one interval apart; survives a rejected task |
 | CUI normalisation | `RO` prefix, whitespace, length and format rejection |
