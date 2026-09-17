@@ -199,7 +199,9 @@ export class AnafClient {
       }
       return { ok: true, status: response.status, rawBody };
     } catch (error) {
-      const aborted = error instanceof Error && error.name === 'AbortError';
+      // Ask the signal, not the error: the abort error undici throws is not reliably
+      // `instanceof Error` across Node versions, so checking `error.name` misses it.
+      const aborted = controller.signal.aborted;
       return {
         ok: false,
         status: null,

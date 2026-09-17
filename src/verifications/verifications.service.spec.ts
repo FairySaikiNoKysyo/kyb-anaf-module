@@ -159,18 +159,24 @@ describe('VerificationsService', () => {
   });
 
   it('4. reports the source as unavailable when the request times out', async () => {
+    // The client aborts at 300 ms (see build()). The mock's delay is just past that so the
+    // timeout fires, but the mock timers finish soon after and do not outlive the worker.
+    const MOCK_DELAY_MS = 320;
     pool()
       .intercept({ path: PATH, method: 'POST' })
       .reply(200, found)
-      .delay(1000)
+      .delay(MOCK_DELAY_MS)
       .times(3);
 
     const result = await service.create('14399840');
+    // Drain the last mock timer before afterEach closes the agent.
+    await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
 
     expect(result.verification.status).toBe(VerificationStatus.SOURCE_UNAVAILABLE);
-    expect(snapshots.rows.length).toBeGreaterThanOrEqual(1);
-    expect(snapshots.rows.every((s) => s.success === false)).toBe(true);
-    expect(result.message).toMatch(/timed out|failed/i);
+    expect(snapshots.rows).toHaveLength(3);
+    expect(snapshots.rows.map((s) => s.attempt)).toEqual([1, 2, 3]);
+    expect(snapshots.rows.every((s) => s.success === false && s.httpStatus === null)).toBe(true);
+    expect(result.message).toMatch(/timed out/i);
   });
 
   it('5. refuses a well-formed response of the wrong shape, without retrying it', async () => {
