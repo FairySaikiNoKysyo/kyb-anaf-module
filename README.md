@@ -81,7 +81,7 @@ by default.
 | `NOT_FOUND` | ANAF listed the CUI in `notFound`; no company row; operator message in `message` | 201 |
 | `SOURCE_UNAVAILABLE` | Every attempt failed (timeout, network error, 5xx, 429, or a 404 without the ANAF envelope) | 201 |
 | `INVALID_RESPONSE` | ANAF answered with a body that is not about this CUI or has an unexpected shape; not retried, a human must look | 201 |
-| `INTERRUPTED` | Was still `PENDING` after `PENDING_TIMEOUT_MS`: the process died mid-check. Set by the reaper, never by the request path | — |
+| `INTERRUPTED` | Was still `PENDING` after `PENDING_TIMEOUT_MS` and had no successful snapshot to finish from: the process died before ANAF answered. Set by the reaper, never by the request path | — |
 
 A malformed CUI is the only 400; nothing is persisted for it.
 
@@ -118,10 +118,18 @@ maps to `VerificationStatus.NOT_FOUND`.
 
 **A failed lookup still creates a verification.** The case is inserted as `PENDING`
 before the lookup starts, so a crash mid-lookup leaves a record that says "unfinished"
-rather than one claiming an outage. Such rows do not stay that way: `StaleVerificationReaper`
-sweeps at startup and every `REAPER_INTERVAL_MS`, and marks any case still `PENDING`
-after `PENDING_TIMEOUT_MS` (default 5 minutes) as `INTERRUPTED` with a note. It is a
-plain `setInterval`, not a scheduler library — one query a minute needs no infrastructure.
+rather than one claiming an outage. Such rows do not stay that way. The snapshot is
+written before the case is finalised, so the crash that matters leaves a `PENDING` case
+next to a successful snapshot that already holds ANAF's answer. `StaleVerificationReaper`
+sweeps at startup and every `REAPER_INTERVAL_MS`; for any case still `PENDING` after
+`PENDING_TIMEOUT_MS` (default 5 minutes) it **finishes the case from that snapshot** —
+same interpretation rules as the live path (`interpretResponse`), company upserted,
+status set, a note saying it was recovered — without calling ANAF again. Only a case
+with no successful snapshot becomes `INTERRUPTED`. The snapshot is the source of truth;
+the case and the company are derived from it, so they can be derived again. Verified on
+the real database: a planted `PENDING` case with a stored 200 response came back as
+`COMPLETED` and linked on the next boot, with zero new ANAF calls. It is a plain
+`setInterval`, not a scheduler library — one query a minute needs no infrastructure.
 When ANAF is unreachable the case ends as `SOURCE_UNAVAILABLE` and the operator can run
 a new check later. The KYB document (§10) requires this, and the reasoning holds
 independently: the obligation is to show that the check was attempted.
@@ -212,7 +220,7 @@ shows which of its points Stage 1 covers and where.
 
 ## Tests
 
-44 cases across five suites, no infrastructure required. The ANAF fixtures in
+48 cases across five suites, no infrastructure required. The ANAF fixtures in
 `test/fixtures/` are real responses captured from the v9 service on 2026-09-17 (one
 phone number blanked), not hand-written approximations.
 
@@ -234,7 +242,7 @@ phone number blanked), not hand-written approximations.
 | Repeat check | company updated, not duplicated; two cases created |
 | Rate limiter | consecutive calls one interval apart; survives a rejected task |
 | CUI normalisation | `RO` prefix, whitespace, length and format rejection |
-| Stale PENDING reaper | only `PENDING` rows older than the timeout become `INTERRUPTED`; fresh and terminal rows untouched; idempotent; survives a failing query; timer cleared on shutdown |
+| Stale PENDING reaper | a stale `PENDING` with a successful snapshot is finished from it (found → `COMPLETED` + company; 404 envelope → `NOT_FOUND`) with **no ANAF call**; newest successful attempt wins; no successful snapshot → `INTERRUPTED`; fresh and terminal rows untouched; idempotent; survives a failing query; timer cleared on shutdown |
 | HTTP contract | real requests through the controller with the same `ValidationPipe` as `main.ts`: 201 + body for found / not found / unavailable, 400 for a numeric `cui`, empty `cui`, unknown fields; `GET` returns snapshot metadata only, 404 / 400 on bad ids |
 
 ---

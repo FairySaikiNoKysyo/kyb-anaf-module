@@ -41,6 +41,47 @@ function recordCui(record: Record<string, unknown>): number | undefined {
   return grouped ?? cuiOf(record.cui);
 }
 
+/**
+ * Turns the body of a successful ANAF call into an outcome for one CUI.
+ *
+ * Pure: no I/O, no retries. It is used by `lookup()` right after the HTTP call, and by
+ * the recovery path (`VerificationsService.completeFromSnapshot`) to replay a stored
+ * snapshot when the process died before the verification was finalised. Same rules in
+ * both places, so a recovered case can never disagree with a live one.
+ */
+export function interpretResponse(rawBody: unknown, cui: number): AnafOutcome {
+  const parsed = anafResponseSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return {
+      kind: 'invalidResponse',
+      reason: `Unexpected ANAF response shape: ${parsed.error.issues.map((i) => i.path.join('.') || 'root').join(', ')}`,
+    };
+  }
+
+  // The answer must actually be ABOUT the CUI we asked for. "found is empty" is not
+  // evidence that a company does not exist; only its presence in notFound is. Telling
+  // an operator "not in the tax register" on the basis of a response that said
+  // nothing about it would be a false compliance statement.
+  const found = parsed.data.found ?? [];
+  if (found.length > 0) {
+    const answered = recordCui(found[0]);
+    if (answered !== cui) {
+      return {
+        kind: 'invalidResponse',
+        reason: `ANAF returned a record for CUI ${answered ?? '<missing>'} when ${cui} was requested`,
+      };
+    }
+    return { kind: 'found', record: found[0] };
+  }
+  if ((parsed.data.notFound ?? []).some((entry) => cuiOf(entry) === cui)) {
+    return { kind: 'notFound' };
+  }
+  return {
+    kind: 'invalidResponse',
+    reason: `ANAF response lists CUI ${cui} neither as found nor as notFound`,
+  };
+}
+
 export class AnafClient {
   private readonly logger = new Logger(AnafClient.name);
 
@@ -115,39 +156,10 @@ export class AnafClient {
         return { kind: 'unavailable', reason: lastReason };
       }
 
-      // HTTP succeeded. Now the body has to make sense.
-      const parsed = anafResponseSchema.safeParse(result.rawBody);
-      if (!parsed.success) {
-        // NOT retried: a valid HTTP response with an unexpected shape means the contract
-        // changed. Hammering the service will not fix that, and a human must look.
-        return {
-          kind: 'invalidResponse',
-          reason: `Unexpected ANAF response shape: ${parsed.error.issues.map((i) => i.path.join('.') || 'root').join(', ')}`,
-        };
-      }
-
-      // The answer must actually be ABOUT the CUI we asked for. "found is empty" is not
-      // evidence that a company does not exist; only its presence in notFound is. Telling
-      // an operator "not in the tax register" on the basis of a response that said
-      // nothing about it would be a false compliance statement.
-      const found = parsed.data.found ?? [];
-      if (found.length > 0) {
-        const answered = recordCui(found[0]);
-        if (answered !== cui) {
-          return {
-            kind: 'invalidResponse',
-            reason: `ANAF returned a record for CUI ${answered ?? '<missing>'} when ${cui} was requested`,
-          };
-        }
-        return { kind: 'found', record: found[0] };
-      }
-      if ((parsed.data.notFound ?? []).some((entry) => cuiOf(entry) === cui)) {
-        return { kind: 'notFound' };
-      }
-      return {
-        kind: 'invalidResponse',
-        reason: `ANAF response lists CUI ${cui} neither as found nor as notFound`,
-      };
+      // HTTP succeeded. Now the body has to make sense. Not retried on failure: a valid
+      // HTTP response with an unexpected shape means the contract changed, and a human
+      // must look.
+      return interpretResponse(result.rawBody, cui);
     }
 
     return { kind: 'unavailable', reason: lastReason };

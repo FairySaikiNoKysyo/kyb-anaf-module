@@ -74,9 +74,14 @@ const config = loadConfig();
     {
       // Housekeeping: closes verifications left PENDING by a process that died mid-check.
       provide: StaleVerificationReaper,
-      inject: [DataSource],
-      useFactory: (dataSource: DataSource) =>
-        new StaleVerificationReaper(dataSource.getRepository(VerificationCase), config.reaper),
+      inject: [DataSource, VerificationsService],
+      useFactory: (dataSource: DataSource, verifications: VerificationsService) =>
+        new StaleVerificationReaper(
+          dataSource.getRepository(VerificationCase),
+          dataSource.getRepository(DataSnapshot),
+          verifications,
+          config.reaper,
+        ),
     },
   ],
 })

@@ -1,16 +1,19 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
-import { AnafClient } from '../anaf/anaf.client';
+import { AnafClient, interpretResponse } from '../anaf/anaf.client';
 import { mapAnafRecord } from '../anaf/anaf.mapper';
-import { AnafAttempt } from '../anaf/anaf.types';
+import { AnafAttempt, AnafOutcome } from '../anaf/anaf.types';
 import { Company } from '../companies/company.entity';
-import { InvalidCuiError, normalizeCui } from '../cui/cui.util';
+import { InvalidCuiError, isCuiChecksumValid, normalizeCui } from '../cui/cui.util';
 import { DataSnapshot, SnapshotSource } from './data-snapshot.entity';
 import { VerificationCase, VerificationStatus } from './verification-case.entity';
 
 /** Shown to the operator, wording taken from the specification (section 4.1). */
 export const NOT_FOUND_MESSAGE =
   'Компания с таким CUI в базе ANAF не найдена, проверьте номер';
+
+/** Appended to the note of a case that was finished by the recovery path, not the request path. */
+export const RECOVERED_NOTE = 'Completed from the stored ANAF snapshot after the original run was interrupted';
 
 export interface VerificationResult {
   verification: VerificationCase;
@@ -73,12 +76,41 @@ export class VerificationsService {
 
     const outcome = await this.anaf.lookup(normalized.value, persistAttempt);
 
+    const { company, message } = await this.applyOutcome(verification, outcome, normalized.checksumValid);
+    return { verification, company, message };
+  }
+
+  /**
+   * Finishes a verification from a snapshot that was already stored, without calling
+   * ANAF again.
+   *
+   * This is the recovery path. The request path writes the snapshot BEFORE it updates
+   * the case, so a process that dies in between leaves a PENDING case next to a
+   * successful snapshot that already holds ANAF's answer. The snapshot is the source of
+   * truth; the case status and the company row are derived from it — so they can be
+   * derived again. Same interpretation rules as the live path (`interpretResponse`),
+   * so a recovered case can never disagree with one that finished normally.
+   */
+  async completeFromSnapshot(verification: VerificationCase, snapshot: DataSnapshot): Promise<VerificationResult> {
+    const outcome = interpretResponse(snapshot.response, verification.requestedCui);
+    const checksumValid = isCuiChecksumValid(verification.requestedCui);
+    const { company, message } = await this.applyOutcome(verification, outcome, checksumValid, RECOVERED_NOTE);
+    return { verification, company, message };
+  }
+
+  /** Maps an outcome onto the case (and the company, when found) and saves the case. */
+  private async applyOutcome(
+    verification: VerificationCase,
+    outcome: AnafOutcome,
+    checksumValid: boolean,
+    suffix: string | null = null,
+  ): Promise<{ company: Company | null; message: string | null }> {
     let company: Company | null = null;
     let message: string | null = null;
 
     switch (outcome.kind) {
       case 'found': {
-        company = await this.upsertCompany(mapAnafRecord(outcome.record, normalized.value));
+        company = await this.upsertCompany(mapAnafRecord(outcome.record, verification.requestedCui));
         verification.companyId = company.id;
         verification.status = VerificationStatus.COMPLETED;
         break;
@@ -101,16 +133,17 @@ export class VerificationsService {
     }
 
     // The checksum is advisory, never a blocker — it is recorded, not enforced.
-    if (!normalized.checksumValid) {
+    if (!checksumValid) {
       const warning = 'CUI control digit does not match (advisory only, the lookup was performed)';
       message = message ? `${message}. ${warning}` : warning;
     }
+    if (suffix) message = message ? `${message}. ${suffix}` : suffix;
 
     verification.note = message;
     verification.finishedAt = new Date();
-    const saved = await this.cases.save(verification);
+    await this.cases.save(verification);
 
-    return { verification: saved, company, message };
+    return { company, message };
   }
 
   private async upsertCompany(mapped: ReturnType<typeof mapAnafRecord>): Promise<Company> {
