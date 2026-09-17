@@ -65,6 +65,7 @@ export class VerificationsService {
           httpStatus: attempt.httpStatus,
           errorMessage: attempt.errorMessage,
           durationMs: attempt.durationMs,
+          queueWaitMs: attempt.queueWaitMs,
           attempt: attempt.attempt,
         }),
       );
@@ -138,7 +139,7 @@ export class VerificationsService {
   async findOne(id: string): Promise<{
     verification: VerificationCase;
     company: Company | null;
-    snapshots: Array<Pick<DataSnapshot, 'id' | 'source' | 'requestedAt' | 'success' | 'httpStatus' | 'durationMs' | 'attempt'>>;
+    snapshots: Array<Pick<DataSnapshot, 'id' | 'source' | 'requestedAt' | 'success' | 'httpStatus' | 'durationMs' | 'queueWaitMs' | 'attempt'>>;
   } | null> {
     const verification = await this.cases.findOne({ where: { id } });
     if (!verification) return null;
@@ -164,6 +165,7 @@ export class VerificationsService {
         success: s.success,
         httpStatus: s.httpStatus,
         durationMs: s.durationMs,
+        queueWaitMs: s.queueWaitMs,
         attempt: s.attempt,
       })),
     };

@@ -50,8 +50,13 @@ export class DataSnapshot {
   @Column({ type: 'text', nullable: true })
   errorMessage!: string | null;
 
+  /** HTTP call only; the limiter queue wait is recorded separately in queueWaitMs. */
   @Column({ type: 'int', nullable: true })
   durationMs!: number | null;
+
+  /** Time spent waiting for the global ANAF rate limiter before this attempt was sent. */
+  @Column({ type: 'int', nullable: true })
+  queueWaitMs!: number | null;
 
   @Column({ type: 'int' })
   attempt!: number;

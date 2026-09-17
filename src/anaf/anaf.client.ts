@@ -73,21 +73,27 @@ export class AnafClient {
     for (let attempt = 1; attempt <= this.options.maxRetries; attempt++) {
       if (attempt > 1) await sleep(this.backoff(attempt - 1));
 
-      const requestedAt = new Date();
-      const startedAt = Date.now();
-
-      const result = await this.rateLimiter.schedule(() => this.attempt(body));
-      const durationMs = Date.now() - startedAt;
+      // Two clocks: time spent waiting for the global rate limiter, and time spent on
+      // the HTTP call itself. Only the second one says anything about ANAF.
+      const scheduledAt = Date.now();
+      let httpStartedAt = scheduledAt;
+      const result = await this.rateLimiter.schedule(() => {
+        httpStartedAt = Date.now();
+        return this.attempt(body);
+      });
+      const durationMs = Date.now() - httpStartedAt;
+      const queueWaitMs = httpStartedAt - scheduledAt;
 
       const record: AnafAttempt = {
         attempt,
-        requestedAt,
+        requestedAt: new Date(httpStartedAt),
         request,
         response: result.rawBody ?? null,
         success: result.ok,
         httpStatus: result.status,
         errorMessage: result.ok ? null : result.reason,
         durationMs,
+        queueWaitMs,
       };
       await onAttempt(record);
 
@@ -98,6 +104,7 @@ export class AnafClient {
           attempt,
           httpStatus: result.status,
           durationMs,
+          queueWaitMs,
           outcome: result.ok ? 'http_ok' : 'http_failed',
         }),
       );

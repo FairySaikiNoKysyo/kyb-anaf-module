@@ -282,6 +282,34 @@ describe('VerificationsService', () => {
     expect(result.verification.note).toContain(NOT_FOUND_MESSAGE);
   });
 
+  it('8b. records HTTP duration and rate-limiter queue wait as separate figures', async () => {
+    const interval = 120;
+    const limited = new VerificationsService(
+      cases,
+      snapshots,
+      companies,
+      new AnafClient(
+        {
+          baseUrl: `${ORIGIN}/api/PlatitorTvaRest`,
+          apiVersion: 'v9',
+          timeoutMs: 300,
+          userAgent: 'KYB-Module/1.0-test',
+          maxRetries: 1,
+        },
+        new AnafRateLimiter(interval),
+      ),
+    );
+    pool().intercept({ path: PATH, method: 'POST' }).reply(200, found).times(2);
+
+    await Promise.all([limited.create('14399840'), limited.create('14399840')]);
+
+    const [first, second] = [...snapshots.rows].sort((a, b) => (a.queueWaitMs ?? 0) - (b.queueWaitMs ?? 0));
+    expect(first.queueWaitMs).toBeLessThan(interval - 15);
+    // The second call waited for the limiter - and that wait must NOT be in durationMs.
+    expect(second.queueWaitMs).toBeGreaterThanOrEqual(interval - 15);
+    expect(second.durationMs).toBeLessThan(interval - 15);
+  });
+
   it('9. updates an existing company instead of inserting a duplicate', async () => {
     pool().intercept({ path: PATH, method: 'POST' }).reply(200, found).times(2);
 

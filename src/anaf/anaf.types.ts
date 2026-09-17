@@ -23,7 +23,10 @@ export interface AnafAttempt {
   success: boolean;
   httpStatus: number | null;
   errorMessage: string | null;
+  /** HTTP call only: from the request leaving the process to the body being read. */
   durationMs: number;
+  /** Time spent waiting for the global rate limiter before the call was made. */
+  queueWaitMs: number;
 }
 
 export type AttemptSink = (attempt: AnafAttempt) => void | Promise<void>;

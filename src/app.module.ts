@@ -11,6 +11,7 @@ import { VerificationsController } from './verifications/verifications.controlle
 import { VerificationsService } from './verifications/verifications.service';
 import { InitialSchema1726500000000 } from './migrations/1726500000000-InitialSchema';
 import { AddPendingStatus1758100000000 } from './migrations/1758100000000-AddPendingStatus';
+import { AddSnapshotQueueWaitMs1758100001000 } from './migrations/1758100001000-AddSnapshotQueueWaitMs';
 
 const config = loadConfig();
 
@@ -24,7 +25,7 @@ const config = loadConfig();
       password: config.db.password,
       database: config.db.name,
       entities: [Company, VerificationCase, DataSnapshot],
-      migrations: [InitialSchema1726500000000, AddPendingStatus1758100000000],
+      migrations: [InitialSchema1726500000000, AddPendingStatus1758100000000, AddSnapshotQueueWaitMs1758100001000],
       synchronize: false,
     }),
     TypeOrmModule.forFeature([Company, VerificationCase, DataSnapshot]),
