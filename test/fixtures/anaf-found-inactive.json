@@ -1,31 +1,87 @@
 {
-  "cod": 200,
-  "message": "SUCCESS",
   "found": [
     {
       "date_generale": {
-        "cui": 14399840,
         "data": "2026-09-17",
-        "denumire": "INACTIVE COMPANY SRL",
-        "adresa": "MUN. BUCURESTI, STR. EXEMPLU NR. 1",
-        "nrRegCom": "J40/1234/2015",
-        "telefon": "0211234567",
-        "codPostal": "010101",
-        "cod_CAEN": "6201",
-        "data_inregistrare": "2015-03-12",
-        "statusRO_e_Factura": true
+        "cui": 18000054,
+        "denumire": "PROMPT ECOLOGIC 3D SRL",
+        "adresa": "MUNICIPIUL BUCUREŞTI, SECTOR 1, STR. SANDU ALDEA, NR.25, ET.P, AP.1",
+        "telefon": "",
+        "fax": "",
+        "codPostal": "12061",
+        "act": "",
+        "stare_inregistrare": "RADIERE din data 08.12.2023",
+        "data_inreg_Reg_RO_e_Factura": "",
+        "organFiscalCompetent": "Administraţia Sector 1 a Finanţelor Publice",
+        "forma_de_proprietate": "PROPR.PRIVATA-CAPITAL PRIVAT AUTOHTON",
+        "forma_organizare": "PERSOANA JURIDICA",
+        "forma_juridica": "SOCIETATE COMERCIALĂ CU RĂSPUNDERE LIMITATĂ",
+        "statusRO_e_Factura": false,
+        "data_inregistrare": "2005-09-29",
+        "nrRegCom": "J40/16525/2005",
+        "cod_CAEN": "7500",
+        "iban": ""
       },
       "inregistrare_scop_Tva": {
-        "scpTVA": true,
-        "perioade_TVA": []
+        "scpTVA": false,
+        "perioade_TVA": [
+          {
+            "data_inceput_ScpTVA": "2010-09-27",
+            "data_sfarsit_ScpTVA": "2017-02-02",
+            "data_anul_imp_ScpTVA": "2017-03-09",
+            "mesaj_ScpTVA": "Anularea înregistrarii în scopuri de TVA a fost efectuata din oficiu, potrivit dispozitiilor Art.316 alin.(11) lit.a) din Legea nr.227/2015 privind Codul fiscal, cu modificarile si completarile ulterioare"
+          },
+          {
+            "data_inceput_ScpTVA": "2005-10-17",
+            "data_sfarsit_ScpTVA": "2009-03-01",
+            "data_anul_imp_ScpTVA": "",
+            "mesaj_ScpTVA": "Anularea înregistrarii în scopuri de TVA a fost efectuata din oficiu, potrivit dispozitiilor Art.153 alin.(9) lit.b) din Legea nr.571/2003 privind Codul fiscal, cu modificarile si completarile ulterioare"
+          }
+        ]
+      },
+      "inregistrare_RTVAI": {
+        "dataActualizareTvaInc": "2018-03-23",
+        "dataPublicareTvaInc": "2018-03-28",
+        "dataInceputTvaInc": "2013-01-01",
+        "dataSfarsitTvaInc": "2017-02-02",
+        "tipActTvaInc": "Radiere",
+        "statusTvaIncasare": false
       },
       "stare_inactiv": {
-        "statusInactivi": true,
-        "dataInactivare": "2024-01-15"
+        "dataInactivare": "2017-02-02",
+        "dataReactivare": "",
+        "dataPublicare": "2017-02-03",
+        "dataRadiere": "2023-12-08",
+        "statusInactivi": true
+      },
+      "inregistrare_SplitTVA": {
+        "dataInceputSplitTVA": "",
+        "dataAnulareSplitTVA": "",
+        "statusSplitTVA": false
       },
       "adresa_sediu_social": {
-        "sdenumire_Strada": "STR. EXEMPLU",
-        "snumar_Strada": "1"
+        "sdenumire_Localitate": "Sector 1 Mun. Bucureşti",
+        "sdenumire_Strada": "Str. Sandu Aldea",
+        "snumar_Strada": "25",
+        "scod_Localitate": "1",
+        "sdenumire_Judet": "MUNICIPIUL BUCUREŞTI",
+        "scod_Judet": "40",
+        "scod_JudetAuto": "B",
+        "sdetalii_Adresa": "",
+        "scod_Postal": "",
+        "stara": ""
+      },
+      "adresa_domiciliu_fiscal": {
+        "ddenumire_Localitate": "Sector 1 Mun. Bucureşti",
+        "ddenumire_Strada": "Str. Sandu Aldea",
+        "dnumar_Strada": "25",
+        "dcod_Localitate": "1",
+        "ddenumire_Judet": "MUNICIPIUL BUCUREŞTI",
+        "dcod_Judet": "40",
+        "dcod_JudetAuto": "B",
+        "ddetalii_Adresa": "",
+        "dcod_Postal": "12061",
+        "dtara": ""
       }
     }
   ],

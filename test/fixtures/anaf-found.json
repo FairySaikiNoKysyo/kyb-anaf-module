@@ -1,23 +1,82 @@
 {
-  "cod": 200,
-  "message": "SUCCESS",
   "found": [
     {
       "date_generale": {
-        "cui": 14399840,
         "data": "2026-09-17",
-        "denumire": "TEST COMPANY SRL",
-        "adresa": "MUN. BUCURESTI, STR. EXEMPLU NR. 1",
-        "nrRegCom": "J40/1234/2015",
-        "telefon": "0211234567",
-        "codPostal": "010101",
-        "cod_CAEN": "6201",
-        "data_inregistrare": "2015-03-12",
-        "statusRO_e_Factura": true
+        "cui": 14399840,
+        "denumire": "DANTE INTERNATIONAL SA",
+        "adresa": "MUNICIPIUL BUCUREŞTI, SECTOR 2, STR. GARA HERĂSTRĂU, NR.6, CLADIREA GLOBALWORTH SQUARE, ET.1,2,3,5,8",
+        "telefon": "",
+        "fax": "",
+        "codPostal": "",
+        "act": "",
+        "stare_inregistrare": "INREGISTRAT din data 29.08.2006",
+        "data_inreg_Reg_RO_e_Factura": "",
+        "organFiscalCompetent": "Direcţia Generală de Administrare a Marilor Contribuabili",
+        "forma_de_proprietate": "PROPR.PRIVATA-CAPITAL PRIVAT AUTOHTON SI STRAIN",
+        "forma_organizare": "PERSOANA JURIDICA",
+        "forma_juridica": "SOCIETATE COMERCIALĂ PE ACŢIUNI",
+        "nrRegCom": "J2002000372404",
+        "cod_CAEN": "4754",
+        "iban": "",
+        "data_inregistrare": "2002-01-23",
+        "statusRO_e_Factura": false
       },
-      "inregistrare_scop_Tva": { "scpTVA": true, "perioade_TVA": [] },
-      "stare_inactiv": { "statusInactivi": false, "dataInactivare": "" },
-      "adresa_sediu_social": { "sdenumire_Strada": "STR. EXEMPLU", "snumar_Strada": "1" }
+      "inregistrare_scop_Tva": {
+        "scpTVA": true,
+        "perioade_TVA": [
+          {
+            "data_inceput_ScpTVA": "2002-02-01",
+            "data_sfarsit_ScpTVA": "",
+            "data_anul_imp_ScpTVA": "",
+            "mesaj_ScpTVA": ""
+          }
+        ]
+      },
+      "inregistrare_RTVAI": {
+        "dataActualizareTvaInc": "",
+        "dataPublicareTvaInc": "",
+        "dataInceputTvaInc": "",
+        "dataSfarsitTvaInc": "",
+        "tipActTvaInc": "",
+        "statusTvaIncasare": false
+      },
+      "stare_inactiv": {
+        "dataInactivare": "",
+        "dataReactivare": "",
+        "dataPublicare": "",
+        "dataRadiere": "",
+        "statusInactivi": false
+      },
+      "inregistrare_SplitTVA": {
+        "dataInceputSplitTVA": "",
+        "dataAnulareSplitTVA": "",
+        "statusSplitTVA": false
+      },
+      "adresa_sediu_social": {
+        "sdenumire_Localitate": "Sector 6 Mun. Bucureşti",
+        "sdenumire_Strada": "Şos. Virtuţii",
+        "snumar_Strada": "148",
+        "scod_Localitate": "6",
+        "sdenumire_Judet": "MUNICIPIUL BUCUREŞTI",
+        "scod_Judet": "40",
+        "scod_JudetAuto": "B",
+        "sdetalii_Adresa": "spatiul E47",
+        "scod_Postal": "60787",
+        "stara": ""
+      },
+      "adresa_domiciliu_fiscal": {
+        "ddenumire_Localitate": "Sector 2 Mun. Bucureşti",
+        "ddenumire_Strada": "Str. Gara Herăstrău",
+        "dnumar_Strada": "6",
+        "dcod_Localitate": "2",
+        "ddenumire_Judet": "MUNICIPIUL BUCUREŞTI",
+        "dcod_Judet": "40",
+        "dcod_JudetAuto": "B",
+        "ddetalii_Adresa": "Cladirea Globalworth Square",
+        "dcod_Postal": "",
+        "dtara": ""
+      }
     }
   ],
   "notFound": []

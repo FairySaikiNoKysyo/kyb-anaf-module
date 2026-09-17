@@ -138,7 +138,18 @@ export class AnafClient {
         // Keep the raw text: an unparseable body is still audit evidence.
       }
 
-      if (!response.ok) {
+      // Verified against the live v9 service: an unknown CUI comes back as HTTP 404 with
+      // the normal envelope, `{"found":[],"notFound":[<cui>]}`. That is a successful
+      // lookup whose answer is "not found", not a failure. A 404 WITHOUT that envelope
+      // (e.g. a wrong endpoint path, which returns problem+json) is still a failure —
+      // otherwise a misconfigured URL would report every company as not found.
+      const isNotFoundEnvelope =
+        response.status === 404 &&
+        typeof rawBody === 'object' &&
+        rawBody !== null &&
+        Array.isArray((rawBody as Record<string, unknown>).notFound);
+
+      if (!response.ok && !isNotFoundEnvelope) {
         return {
           ok: false,
           status: response.status,

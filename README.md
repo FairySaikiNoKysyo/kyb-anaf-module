@@ -59,11 +59,14 @@ by default.
 
 ## Design decisions
 
-**"Not found" is a business result, not an error.** ANAF answers an unknown CUI with
-HTTP 200 and the number in a `notFound` array — not a 404. Code that treats "non-200" as
-the only failure path passes its own tests and is wrong in production. More importantly,
-"this company is not in the tax register" is an answer a KYB operator needs recorded, not
-an exception to swallow. It maps to `VerificationStatus.NOT_FOUND`.
+**"Not found" is a business result, not an error.** Verified against the live service:
+ANAF answers an unknown CUI with **HTTP 404** and the normal envelope,
+`{"found":[],"notFound":[<cui>]}` (a batch where at least one CUI exists comes back 200).
+The client treats a 404 as a successful lookup only when that envelope is present; a 404
+without it — what a wrong endpoint path returns — stays `SOURCE_UNAVAILABLE`, so a
+misconfigured URL cannot report every company as not found. "This company is not in the
+tax register" is an answer a KYB operator needs recorded, not an exception to swallow. It
+maps to `VerificationStatus.NOT_FOUND`.
 
 **A failed lookup still creates a verification.** When ANAF is unreachable the case is
 saved with `SOURCE_UNAVAILABLE` and the operator can retry later. The specification
@@ -144,12 +147,15 @@ any undeclared request fails the run.
 
 ## Tests
 
-25 cases across three suites, no infrastructure required.
+26 cases across three suites, no infrastructure required. The ANAF fixtures in
+`test/fixtures/` are real responses captured from the v9 service on 2026-09-17 (one
+phone number blanked), not hand-written approximations.
 
 | Area | Covered |
 |---|---|
 | Company found | company stored, case `COMPLETED`, snapshot `success: true` |
-| Not found | `NOT_FOUND`, no company row, operator message, verification still created |
+| Not found | HTTP 404 + envelope → `NOT_FOUND`, no company row, operator message, verification still created |
+| 404 without envelope | `SOURCE_UNAVAILABLE`, not mistaken for "not found", not retried |
 | HTTP 500 | 3 attempts, **3** failed snapshots, `SOURCE_UNAVAILABLE`, raw body kept |
 | Timeout | `SOURCE_UNAVAILABLE`, every attempt recorded |
 | Wrong response shape | `INVALID_RESPONSE`, **not** retried, raw body kept |
@@ -188,10 +194,11 @@ onboarding is exactly what the register is for.
 
 ## Note for the reviewer
 
-The ANAF endpoint is not reachable from the environment this was written in, so the
-response mapping follows the structure documented for v9 and is written to tolerate both
-the grouped and flat layouts. Before this runs against production data, the field names
-in `src/anaf/anaf.mapper.ts` should be confirmed against a live call:
+The first draft was written without network access to ANAF. It was then verified against
+the live v9 service on 2026-09-17: every field `src/anaf/anaf.mapper.ts` reads exists
+under the expected name and type; v9 is the current version (`v10` does not exist). Two
+things the documentation had wrong were found and fixed: "not found" is HTTP 404, not 200,
+and `notFound` holds bare numbers, not objects. To re-verify:
 
 ```bash
 curl -s -X POST https://webservicesp.anaf.ro/api/PlatitorTvaRest/v9/tva \
@@ -200,4 +207,4 @@ curl -s -X POST https://webservicesp.anaf.ro/api/PlatitorTvaRest/v9/tva \
   -d '[{"cui":14399840,"data":"2026-09-17"}]' | jq
 ```
 
-That is the one file that would change.
+If the field names change again, `src/anaf/anaf.mapper.ts` is the one file to touch.

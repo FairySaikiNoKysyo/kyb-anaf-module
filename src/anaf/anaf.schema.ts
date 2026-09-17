@@ -10,9 +10,16 @@ import { z } from 'zod';
  * garbage into a compliance dossier. So the envelope is validated, the record itself is
  * kept raw, and every field read happens in one place (anaf.mapper.ts).
  */
-export const anafNotFoundEntrySchema = z
-  .object({ cui: z.union([z.number(), z.string()]).optional() })
-  .passthrough();
+/**
+ * Verified against the live v9 service: `notFound` is an array of BARE numbers
+ * (`{"found":[],"notFound":[99999999]}`), not of objects. The object form is kept as a
+ * fallback because the specification's own example uses it.
+ */
+export const anafNotFoundEntrySchema = z.union([
+  z.number(),
+  z.string(),
+  z.object({ cui: z.union([z.number(), z.string()]).optional() }).passthrough(),
+]);
 
 export const anafFoundEntrySchema = z.record(z.unknown());
 

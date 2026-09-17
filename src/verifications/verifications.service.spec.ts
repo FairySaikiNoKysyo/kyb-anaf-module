@@ -72,9 +72,14 @@ describe('VerificationsService', () => {
     const result = await service.create('RO 14399840');
 
     expect(result.verification.status).toBe(VerificationStatus.COMPLETED);
-    expect(result.company?.name).toBe('TEST COMPANY SRL');
-    expect(result.company?.registrationNumber).toBe('J40/1234/2015');
-    expect(result.company?.caenCode).toBe('6201');
+    // Values from the real ANAF response captured in test/fixtures/anaf-found.json.
+    expect(result.company?.cui).toBe(14399840);
+    expect(result.company?.name).toBe('DANTE INTERNATIONAL SA');
+    expect(result.company?.registrationNumber).toBe('J2002000372404');
+    expect(result.company?.caenCode).toBe('4754');
+    expect(result.company?.isInactive).toBe(false);
+    expect(result.company?.vatPayer).toBe(true);
+    expect(result.company?.registeredAt?.toISOString().slice(0, 10)).toBe('2002-01-23');
     expect(companies.rows).toHaveLength(1);
     expect(snapshots.rows).toHaveLength(1);
     expect(snapshots.rows[0].success).toBe(true);
@@ -82,7 +87,10 @@ describe('VerificationsService', () => {
   });
 
   it('2. treats "not found" as a business result, not an error', async () => {
-    pool().intercept({ path: PATH, method: 'POST' }).reply(200, notFound);
+    // Verified against the live service: an unknown CUI is HTTP 404 with the normal
+    // envelope, not 200. Serving it with 200 here would let a client that treats every
+    // non-2xx as an outage pass this test and be wrong in production.
+    pool().intercept({ path: PATH, method: 'POST' }).reply(404, notFound);
 
     const result = await service.create('99999999');
 
@@ -90,12 +98,35 @@ describe('VerificationsService', () => {
     expect(result.company).toBeNull();
     expect(companies.rows).toHaveLength(0);
     expect(result.message).toContain(NOT_FOUND_MESSAGE);
-    // The HTTP call itself succeeded, so the snapshot is a success.
+    // The HTTP call itself succeeded, so the snapshot is a success — with the real status.
     expect(snapshots.rows).toHaveLength(1);
     expect(snapshots.rows[0].success).toBe(true);
+    expect(snapshots.rows[0].httpStatus).toBe(404);
+    expect(snapshots.rows[0].response).toEqual(notFound);
     // The verification still exists — that record is the point of the module.
     expect(result.verification.id).toBeDefined();
     expect(result.verification.finishedAt).toBeInstanceOf(Date);
+  });
+
+  it('2b. does not mistake a 404 without the ANAF envelope for "not found"', async () => {
+    // What a wrong endpoint path returns (observed live on /v10/tva): problem+json.
+    const routing404 = {
+      type: 'about:blank',
+      title: 'Not Found',
+      status: 404,
+      detail: 'No endpoint POST /PlatitorTvaRest/v10/tva.',
+      instance: '/PlatitorTvaRest/v10/tva',
+    };
+    pool().intercept({ path: PATH, method: 'POST' }).reply(404, routing404);
+
+    const result = await service.create('14399840');
+
+    expect(result.verification.status).toBe(VerificationStatus.SOURCE_UNAVAILABLE);
+    expect(result.company).toBeNull();
+    // Not retried: 4xx other than 429 will not become a success.
+    expect(snapshots.rows).toHaveLength(1);
+    expect(snapshots.rows[0].success).toBe(false);
+    expect(snapshots.rows[0].httpStatus).toBe(404);
   });
 
   it('3. retries a 5xx three times and stores a failed snapshot for every attempt', async () => {
@@ -143,10 +174,13 @@ describe('VerificationsService', () => {
   it('6. promotes the ANAF inactive flag to its own column', async () => {
     pool().intercept({ path: PATH, method: 'POST' }).reply(200, foundInactive);
 
-    const result = await service.create('14399840');
+    const result = await service.create('18000054');
 
     expect(result.verification.status).toBe(VerificationStatus.COMPLETED);
+    expect(result.company?.cui).toBe(18000054);
     expect(result.company?.isInactive).toBe(true);
+    // A deregistered VAT payer: the real record has scpTVA=false.
+    expect(result.company?.vatPayer).toBe(false);
   });
 
   it('7. rejects a malformed CUI before spending a request', async () => {
@@ -157,7 +191,7 @@ describe('VerificationsService', () => {
   });
 
   it('8. records a checksum mismatch as a warning and still performs the lookup', async () => {
-    pool().intercept({ path: PATH, method: 'POST' }).reply(200, notFound);
+    pool().intercept({ path: PATH, method: 'POST' }).reply(404, notFound);
 
     const result = await service.create('14399841'); // control digit deliberately wrong
 
